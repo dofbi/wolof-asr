@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Project specific
+wandb/
+!wandb/.gitkeep
+experiments/
+!experiments/.gitkeep
+logs/
+!logs/.gitkeep
+cache/
+!cache/.gitkeep
+models/
+!models/.gitkeep
+data/raw/
+!data/raw/.gitkeep
+data/processed/
+!data/processed/.gitkeep
+checkpoints/
+!checkpoints/.gitkeep
+
+# Wandb specific
+*.wandb
+wandb/**/run-*.wandb
+wandb/**/files/
+wandb/**/logs/
+wandb/**/tmp/
+wandb/**/*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.venv/
+env/
+venv/
+ENV/
+.env.*
+
+# IDE
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# OS
+.DS_Store
+Thumbs.db
+training.log
