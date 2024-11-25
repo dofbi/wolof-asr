@@ -26,6 +26,9 @@ class WolofWhisperModel:
         self.model.config.temperature = 0.0
         self.model.config.length_penalty = 1.0
 
+        # Define the decoder start token id
+        self.decoder_start_token_id = self.model.config.decoder_start_token_id
+
     def parameters(self):
         """Return model parameters for optimization."""
         return list(self.model.parameters())
@@ -50,8 +53,20 @@ class WolofWhisperModel:
         """Move model to specified device."""
         self.model = self.model.to(device)
 
+    def prepare_decoder_input_ids(self, batch_size, device):
+        """Prepare decoder input IDs for initialization."""
+        # Create decoder_input_ids starting with decoder_start_token_id
+        decoder_input_ids = torch.ones((batch_size, 1), dtype=torch.long, device=device) * self.decoder_start_token_id
+        return decoder_input_ids
+
     def __call__(self, input_features, labels=None):
         """Forward pass through the model."""
+        batch_size = input_features.size(0)
+        device = input_features.device
+
+        # Prepare decoder input IDs if not in training mode
+        decoder_input_ids = None if labels is not None else self.prepare_decoder_input_ids(batch_size, device)
+
         if labels is not None:
             # Training/validation forward pass
             outputs = self.model(
@@ -63,6 +78,7 @@ class WolofWhisperModel:
             # Inference forward pass
             outputs = self.model(
                 input_features=input_features,
+                decoder_input_ids=decoder_input_ids,  # Add decoder_input_ids here
                 return_dict=True
             )
 
