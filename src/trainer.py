@@ -143,77 +143,77 @@ class Trainer:
             start_epoch, global_step, best_val_loss = 0, 0, float('inf')
 
         try:
-        logger.info(f"Training started with {num_epochs} epochs")
-
-        for epoch in range(start_epoch, num_epochs):
-            self.model.train()
-            train_loss = 0
-            train_steps = 0
-            epoch_start_time = time.time()
-            logger.info(f"\nEpoch {epoch+1}/{num_epochs}")
-
-            progress_bar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}")
-            for batch in progress_bar:
-                optimizer.zero_grad()
-
-                # Prepare batch
-                processed_batch = self.processor.prepare_dataset(batch)
-                input_features = processed_batch['input_features'].to(self.device)
-                labels = processed_batch['labels'].to(self.device)
-
-                # Forward pass
-                outputs = self.model(input_features=input_features, labels=labels)
-                loss = outputs.loss
-                loss.backward()
-
-                optimizer.step()
-
-                train_loss += loss.item()
-                train_steps += 1
-                global_step += 1
-                progress_bar.set_postfix({'train_loss': loss.item()})  # Changé 'loss' en 'train_loss'
-
-                # Métriques d'entraînement avec préfixe 'train/'
-                train_metrics = {
-                    "train/loss": loss.item(),
-                    "train/epoch": epoch + 1,
-                    "train/step": global_step,
-                    "train/progress": global_step / (len(train_dataloader) * num_epochs),
+            logger.info(f"Training started with {num_epochs} epochs")
+    
+            for epoch in range(start_epoch, num_epochs):
+                self.model.train()
+                train_loss = 0
+                train_steps = 0
+                epoch_start_time = time.time()
+                logger.info(f"\nEpoch {epoch+1}/{num_epochs}")
+    
+                progress_bar = tqdm(train_dataloader, desc=f"Epoch {epoch+1}")
+                for batch in progress_bar:
+                    optimizer.zero_grad()
+    
+                    # Prepare batch
+                    processed_batch = self.processor.prepare_dataset(batch)
+                    input_features = processed_batch['input_features'].to(self.device)
+                    labels = processed_batch['labels'].to(self.device)
+    
+                    # Forward pass
+                    outputs = self.model(input_features=input_features, labels=labels)
+                    loss = outputs.loss
+                    loss.backward()
+    
+                    optimizer.step()
+    
+                    train_loss += loss.item()
+                    train_steps += 1
+                    global_step += 1
+                    progress_bar.set_postfix({'train_loss': loss.item()})  # Changé 'loss' en 'train_loss'
+    
+                    # Métriques d'entraînement avec préfixe 'train/'
+                    train_metrics = {
+                        "train/loss": loss.item(),
+                        "train/epoch": epoch + 1,
+                        "train/step": global_step,
+                        "train/progress": global_step / (len(train_dataloader) * num_epochs),
+                    }
+                    wandb.log(train_metrics)
+    
+                # Évaluation à la fin de chaque époque
+                val_loss = self.evaluate(val_dataloader)
+                accuracy = self.compute_accuracy(val_dataloader)
+    
+                # Métriques de validation avec préfixe 'val/'
+                val_metrics = {
+                    "val/epoch": epoch + 1,
+                    "val/loss": val_loss,
+                    "val/accuracy": accuracy,
+                    "epoch": epoch + 1  # Gardé pour la chronologie globale
                 }
-                wandb.log(train_metrics)
-
-            # Évaluation à la fin de chaque époque
-            val_loss = self.evaluate(val_dataloader)
-            accuracy = self.compute_accuracy(val_dataloader)
-
-            # Métriques de validation avec préfixe 'val/'
-            val_metrics = {
-                "val/epoch": epoch + 1,
-                "val/loss": val_loss,
-                "val/accuracy": accuracy,
-                "epoch": epoch + 1  # Gardé pour la chronologie globale
-            }
-            wandb.log(val_metrics)
-
-            # Save checkpoint
-            if hasattr(self, 'checkpoint_manager') and val_loss < best_val_loss:
-                best_val_loss = val_loss
+                wandb.log(val_metrics)
+    
+                # Save checkpoint
+                if hasattr(self, 'checkpoint_manager') and val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    self.checkpoint_manager.save_checkpoint(
+                        self.model, optimizer, epoch + 1, global_step, best_val_loss
+                    )
+    
+                scheduler.step()
+    
+        except KeyboardInterrupt:
+            logger.info("Training interrupted by user")
+            if hasattr(self, 'checkpoint_manager'):
                 self.checkpoint_manager.save_checkpoint(
-                    self.model, optimizer, epoch + 1, global_step, best_val_loss
+                    self.model, optimizer, epoch, global_step, best_val_loss
                 )
-
-            scheduler.step()
-
-    except KeyboardInterrupt:
-        logger.info("Training interrupted by user")
-        if hasattr(self, 'checkpoint_manager'):
-            self.checkpoint_manager.save_checkpoint(
-                self.model, optimizer, epoch, global_step, best_val_loss
-            )
-
-    except Exception as e:
-        logger.error(f"Error during training: {str(e)}")
-        raise
-
-    finally:
-        wandb.finish()
+    
+        except Exception as e:
+            logger.error(f"Error during training: {str(e)}")
+            raise
+    
+        finally:
+            wandb.finish()
