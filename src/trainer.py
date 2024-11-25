@@ -47,27 +47,27 @@ class Trainer:
         logger.info("=== Logging setup completed ===")
 
     def evaluate(self, val_dataloader):
-    """Evaluate the model on the validation dataset."""
-    logger.info("Starting evaluation...")
-    self.model.eval()  # Switch to evaluation mode
-    val_loss = 0
-    with torch.no_grad():
-        progress_bar = tqdm(val_dataloader, desc="Evaluating")
-        for batch in progress_bar:
-            # Prepare data
-            processed_batch = self.processor.prepare_dataset(batch)
-            input_features = processed_batch['input_features'].to(self.device)
-            labels = processed_batch['labels'].to(self.device)
-
-            # Forward pass
-            outputs = self.model(input_features=input_features, labels=labels)
-            val_loss += outputs.loss.item()
-            progress_bar.set_postfix({'val_loss': outputs.loss.item()})
-
-    val_loss /= len(val_dataloader)
-    logger.info(f"Validation loss: {val_loss:.4f}")
-    self.model.train()  # Switch back to training mode
-    return val_loss
+        """Evaluate the model on the validation dataset."""
+        logger.info("Starting evaluation...")
+        self.model.eval()  # Switch to evaluation mode
+        val_loss = 0
+        with torch.no_grad():
+            progress_bar = tqdm(val_dataloader, desc="Evaluating")
+            for batch in progress_bar:
+                # Prepare data
+                processed_batch = self.processor.prepare_dataset(batch)
+                input_features = processed_batch['input_features'].to(self.device)
+                labels = processed_batch['labels'].to(self.device)
+    
+                # Forward pass
+                outputs = self.model(input_features=input_features, labels=labels)
+                val_loss += outputs.loss.item()
+                progress_bar.set_postfix({'val_loss': outputs.loss.item()})
+    
+        val_loss /= len(val_dataloader)
+        logger.info(f"Validation loss: {val_loss:.4f}")
+        self.model.train()  # Switch back to training mode
+        return val_loss
 
     def compute_accuracy(self, val_dataloader):
         """Compute accuracy on the validation dataset."""
