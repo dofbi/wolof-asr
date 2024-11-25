@@ -10,23 +10,23 @@ def load_environment():
     """Load and validate environment variables."""
     # Load environment variables from .env file
     load_dotenv(override=True)
-    
+
     # Required environment variables and their descriptions
     required_vars = {
         "WANDB_API_KEY": "Weights & Biases API key for experiment tracking",
     }
-    
+
     # Check for missing variables
     missing_vars = []
     for var, description in required_vars.items():
         if not os.getenv(var):
             missing_vars.append(f"{var} ({description})")
-    
+
     if missing_vars:
         error_msg = f"Missing required environment variables:\n" + "\n".join(missing_vars)
         logger.error(error_msg)
         raise EnvironmentError(error_msg)
-    
+
     logger.info("Environment variables loaded successfully")
 
 # Initialize environment
@@ -76,6 +76,7 @@ DEFAULT_MODEL_CONFIG = {
     "epochs": 2,
     "learning_rate": 5e-5,
     "seed": 42,
+    "max_samples": None,  # No limit by default
 }
 
 # Logging configuration

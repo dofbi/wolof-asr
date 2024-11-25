@@ -1,4 +1,5 @@
 import torch
+import logging
 from tqdm import tqdm
 from jiwer import wer
 from transformers import WhisperProcessor
@@ -24,17 +25,31 @@ class Evaluator:
 
         with torch.no_grad():
             for batch in tqdm(dataloader, desc="Evaluating"):
-                processed_batch = self.processor.prepare_dataset(batch)
-                input_features = processed_batch['input_features'].to(self.device)
+                try:
+                    processed_batch = self.processor.prepare_dataset(batch)
+                    input_features = processed_batch['input_features'].to(self.device)
 
-                generated_ids = self.model.generate(input_features)
-                transcriptions = self.processor.batch_decode(
-                    generated_ids,
-                    skip_special_tokens=True
-                )
+                    generated_ids = self.model.generate(input_features)
+                    if generated_ids is not None:
+                        transcriptions = self.processor.batch_decode(
+                            generated_ids,
+                            skip_special_tokens=True
+                        )
+                        if transcriptions:
+                            all_predictions.extend(transcriptions)
+                            all_references.extend(batch['text'])
+                    else:
+                        logging.warning("Generated IDs is None, skipping batch")
+                except Exception as e:
+                    logging.error(f"Error processing batch: {str(e)}")
+                    continue
 
-                all_predictions.extend(transcriptions)
-                all_references.extend(batch['text'])
+        if not all_predictions or not all_references:
+            logging.warning("No valid predictions or references found")
+            return {
+                'wer': float('inf'),
+                'samples': []
+            }
 
         error_rate = wer(all_references, all_predictions)
         samples = list(zip(all_references, all_predictions))[:5]

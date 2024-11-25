@@ -4,22 +4,23 @@ import numpy as np
 import logging
 import os
 
-def set_seed(seed=42):
+def seed_everything(seed=42):
     """Set random seeds for reproducibility."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+    return seed
 
 def setup_logging():
     """Setup logging configuration using config."""
     from src.config import LOGGING_CONFIG
     from logging.config import dictConfig
-    
+
     # Create logs directory if it doesn't exist
     os.makedirs(os.path.dirname(LOGGING_CONFIG['handlers']['file']['filename']), exist_ok=True)
-    
+
     # Configure logging
     dictConfig(LOGGING_CONFIG)
 

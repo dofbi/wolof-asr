@@ -1,13 +1,24 @@
 import torch
+import torch.nn as nn
 import logging
 from transformers import WhisperForConditionalGeneration, WhisperConfig
 from transformers.models.whisper.modeling_whisper import EncoderDecoderCache
 from transformers.generation.utils import GenerateOutput
 
-class WolofWhisperModel:
-    def __init__(self, pretrained_model="openai/whisper-small"):
-        """Initialize Whisper model for Wolof."""
-        self.model = WhisperForConditionalGeneration.from_pretrained(pretrained_model)
+class WolofWhisperModel(nn.Module):
+    def __init__(self, model_name="openai/whisper-small"):
+        """Initialize Whisper model for Wolof.
+        
+        Args:
+            model_name (str): Nom du modèle pré-entraîné à utiliser (ex: 'openai/whisper-small')
+        """
+        super().__init__()
+        try:
+            self.model = WhisperForConditionalGeneration.from_pretrained(model_name)
+            logging.info(f"Modèle {model_name} chargé avec succès")
+        except Exception as e:
+            logging.error(f"Erreur lors du chargement du modèle {model_name}: {str(e)}")
+            raise
 
         # Modify the model for Wolof
         self.model.config.forced_decoder_ids = None
@@ -29,9 +40,66 @@ class WolofWhisperModel:
         # Define the decoder start token id
         self.decoder_start_token_id = self.model.config.decoder_start_token_id
 
-    def parameters(self):
+    def parameters(self, recurse: bool = True):
         """Return model parameters for optimization."""
-        return list(self.model.parameters())
+        return self.model.parameters(recurse=recurse)
+
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        """Return the model's state dictionary following PyTorch's nn.Module interface.
+
+        Args:
+            destination (dict, optional): Starting state_dict to update with parameters
+            prefix (str): Parameter key prefix
+            keep_vars (bool): Whether to keep parameter variables instead of tensor copies
+
+        Returns:
+            dict: The model's state dictionary containing parameters and buffers
+        """
+        if not hasattr(self, 'model') or self.model is None:
+            raise RuntimeError("Model is not properly initialized")
+
+        # Get state dict from underlying model
+        model_state = self.model.state_dict(destination=destination, prefix=prefix, keep_vars=keep_vars)
+
+        # If no destination provided, use model_state as destination
+        if destination is None:
+            destination = model_state
+        else:
+            # Update destination with model state
+            for name, param in model_state.items():
+                destination[prefix + name] = param
+
+        return destination
+
+    def load_state_dict(self, state_dict, strict=True):
+        """Load a state dictionary with validation and error handling."""
+        try:
+            if not state_dict:
+                raise ValueError("Empty state dictionary provided")
+            
+            # Validate keys match current model
+            model_keys = set(self.model.state_dict().keys())
+            input_keys = set(state_dict.keys())
+            
+            missing_keys = model_keys - input_keys
+            unexpected_keys = input_keys - model_keys
+            
+            if missing_keys:
+                logging.warning(f"Missing keys in state dict: {missing_keys}")
+            if unexpected_keys:
+                logging.warning(f"Unexpected keys in state dict: {unexpected_keys}")
+            
+            # Load state dict with specified strict parameter
+            result = self.model.load_state_dict(state_dict, strict=strict)
+            
+            if result.missing_keys or result.unexpected_keys:
+                logging.warning(f"State dict loaded with mismatches - Missing: {result.missing_keys}, Unexpected: {result.unexpected_keys}")
+            
+            return result
+            
+        except Exception as e:
+            logging.error(f"Error in load_state_dict(): {str(e)}")
+            raise RuntimeError(f"Failed to load state dictionary: {str(e)}")
 
     def save(self, path):
         """Save the model to disk."""
@@ -41,13 +109,15 @@ class WolofWhisperModel:
         """Load the model from disk."""
         self.model = WhisperForConditionalGeneration.from_pretrained(path)
 
-    def train(self):
+    def train(self, mode: bool = True):
         """Set model to training mode."""
-        self.model.train()
+        self.model.train(mode)
+        return self
 
     def eval(self):
         """Set model to evaluation mode."""
         self.model.eval()
+        return self
 
     def to(self, device):
         """Move model to specified device."""

@@ -4,15 +4,26 @@ import logging
 import psutil
 import torch
 from torch.optim import AdamW
-from torch.nn.utils import clip_grad_norm_
+# Import removed: clip_grad_norm_ not used
 from transformers import get_scheduler
 
 from src.data_loader import create_data_loader
 from src.model import WolofWhisperModel
 from src.trainer import Trainer
 from src.utils import seed_everything
+from src.audio_processor import AudioPreprocessor
 
 # Configuration des logs
+# logging.basicConfig(
+#     format="%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(funcName)s - %(message)s",
+#     level=logging.DEBUG,
+#     handlers=[
+#         logging.StreamHandler(),
+#         logging.FileHandler('training.log', mode='w')
+#     ]
+# )
+# Configuration des logs
+
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     level=logging.INFO
@@ -27,7 +38,8 @@ def main(args):
     # Charger les données
     logger.info("Chargement des données...")
     train_dataloader, val_dataloader = create_data_loader(
-        batch_size=args.batch_size, shuffle=True
+        batch_size=args.batch_size,
+        max_samples=args.max_samples
     )
     logger.info(f"Nombre de batches d'entraînement : {len(train_dataloader)}")
     logger.info(f"Nombre de batches de validation : {len(val_dataloader)}")
@@ -44,29 +56,43 @@ def main(args):
         num_warmup_steps=0, num_training_steps=args.epochs * len(train_dataloader)
     )
 
+    # Initialiser le processeur audio
+    processor = AudioPreprocessor(model_name=args.model_name)
+    
     # Initialiser le gestionnaire d'entraînement
     trainer = Trainer(
         model=model,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        train_dataloader=train_dataloader,
-        val_dataloader=val_dataloader,
-        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-        log_interval=args.log_interval,
-        checkpoint_dir=args.checkpoint_dir
+        processor=processor,  # Pass the initialized processor
+        device="cuda" if torch.cuda.is_available() else "cpu",
+        experiment_dir=args.checkpoint_dir
     )
 
     # Lancer l'entraînement
     logger.info("Démarrage de l'entraînement...")
     try:
-        trainer.train(epochs=args.epochs, max_grad_norm=args.max_grad_norm)
+        trainer.train(
+            train_dataloader=train_dataloader,
+            val_dataloader=val_dataloader,
+            num_epochs=args.epochs,
+            learning_rate=args.learning_rate
+        )
         logger.info("Entraînement terminé avec succès.")
     except KeyboardInterrupt:
         logger.warning("Entraînement interrompu par l'utilisateur.")
-        trainer.save_checkpoint()
+        if hasattr(trainer, 'checkpoint_manager'):
+            trainer.checkpoint_manager.save_checkpoint(
+                trainer.model,
+                trainer.optimizer if hasattr(trainer, 'optimizer') else None,
+                0, 0, float('inf')
+            )
     except Exception as e:
         logger.error(f"Une erreur inattendue est survenue : {str(e)}")
-        trainer.save_checkpoint()
+        if hasattr(trainer, 'checkpoint_manager'):
+            trainer.checkpoint_manager.save_checkpoint(
+                trainer.model,
+                trainer.optimizer if hasattr(trainer, 'optimizer') else None,
+                0, 0, float('inf')
+            )
 
 if __name__ == "__main__":
     # Définition des arguments du script
@@ -87,6 +113,8 @@ if __name__ == "__main__":
                         help="Répertoire où sauvegarder les checkpoints.")
     parser.add_argument("--max_grad_norm", default=1.0, type=float,
                         help="Norme maximale des gradients pour le clipping.")
+    parser.add_argument("--max_samples", type=int, default=None,
+                        help="Nombre maximum d'échantillons à utiliser pour l'entraînement")
 
     # Parse les arguments et lance le script principal
     args = parser.parse_args()
