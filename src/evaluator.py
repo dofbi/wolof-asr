@@ -1,18 +1,24 @@
 import torch
 from tqdm import tqdm
 from jiwer import wer
+from transformers import WhisperProcessor
 
 class Evaluator:
-    def __init__(self, model, processor, device="cuda" if torch.cuda.is_available() else "cpu"):
-        """Initialize evaluator with model and processor."""
+    def __init__(self, model, processor, device="cuda"):
         self.model = model
-        self.processor = processor
+        self.processor = self._validate_processor(processor)
         self.device = device
         self.model.to(device)
         self.model.eval()
 
+    def _validate_processor(self, processor):
+        """Validate processor has required methods."""
+        if not hasattr(processor, 'batch_decode'):
+            raise AttributeError("Processor must have batch_decode method")
+        return processor
+
     def compute_metrics(self, dataloader):
-        """Compute WER and other metrics."""
+        """Compute Word Error Rate (WER) and sample predictions."""
         all_predictions = []
         all_references = []
 
@@ -21,7 +27,6 @@ class Evaluator:
                 processed_batch = self.processor.prepare_dataset(batch)
                 input_features = processed_batch['input_features'].to(self.device)
 
-                # Generate predictions
                 generated_ids = self.model.generate(input_features)
                 transcriptions = self.processor.batch_decode(
                     generated_ids,
@@ -31,10 +36,7 @@ class Evaluator:
                 all_predictions.extend(transcriptions)
                 all_references.extend(batch['text'])
 
-        # Compute WER
         error_rate = wer(all_references, all_predictions)
-
-        # Sample predictions
         samples = list(zip(all_references, all_predictions))[:5]
 
         return {
