@@ -46,6 +46,51 @@ class Trainer:
         logger.propagate = False
         logger.info("=== Logging setup completed ===")
 
+    def evaluate(self, val_dataloader):
+        """Evaluate the model on the validation dataset."""
+        logger.info("Starting evaluation...")
+        self.model.eval()  # Switch to evaluation mode
+        val_loss = 0
+        with torch.no_grad():
+            for batch in val_dataloader:
+                # Prepare data
+                processed_batch = self.processor.prepare_dataset(batch)
+                input_features = processed_batch['input_features'].to(self.device)
+                labels = processed_batch['labels'].to(self.device)
+
+                # Forward pass
+                outputs = self.model(input_features=input_features, labels=labels)
+                val_loss += outputs.loss.item()
+
+        val_loss /= len(val_dataloader)
+        logger.info(f"Validation loss: {val_loss:.4f}")
+        self.model.train()  # Switch back to training mode
+        return val_loss
+
+    def compute_accuracy(self, val_dataloader):
+        """Compute accuracy on the validation dataset."""
+        logger.info("Computing accuracy...")
+        self.model.eval()  # Switch to evaluation mode
+        correct = 0
+        total = 0
+        with torch.no_grad():
+            for batch in val_dataloader:
+                # Prepare data
+                processed_batch = self.processor.prepare_dataset(batch)
+                input_features = processed_batch['input_features'].to(self.device)
+                labels = processed_batch['labels'].to(self.device)
+
+                # Forward pass
+                outputs = self.model(input_features=input_features)
+                predictions = torch.argmax(outputs.logits, dim=-1)
+                correct += (predictions == labels).sum().item()
+                total += labels.size(0)
+
+        accuracy = correct / total if total > 0 else 0
+        logger.info(f"Validation accuracy: {accuracy:.4f}")
+        self.model.train()  # Switch back to training mode
+        return accuracy
+
     def train(self, train_dataloader, val_dataloader, num_epochs=10, learning_rate=5e-5):
         """Train the model with detailed logging."""
         print("\n" + "="*70)
@@ -136,7 +181,7 @@ class Trainer:
 
                 val_metrics = {
                     "epoch": epoch + 1,
-                    "loss": val_loss,
+                    "val_loss": val_loss,
                     "accuracy": accuracy
                 }
                 wandb.log(val_metrics)
