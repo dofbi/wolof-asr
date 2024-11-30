@@ -49,8 +49,15 @@ class AudioPreprocessor:
             if len(audio_array.shape) > 1:
                 audio_array = torch.mean(audio_array, dim=0)
 
+            # Noise reduction
+            noise_gate = torchaudio.transforms.Vad(sample_rate=self.sampling_rate)
+            audio_array = noise_gate(audio_array)
+
             # Normalize audio
-            audio_array = audio_array / torch.max(torch.abs(audio_array))
+            if audio_array.numel() == 0 or torch.max(torch.abs(audio_array)) == 0:
+                logging.warning("Audio array is empty or its max value is zero. Skipping normalization.")
+            else:
+                audio_array = audio_array / torch.max(torch.abs(audio_array))
 
             # Pad or truncate
             if audio_array.shape[0] < self.max_length:
@@ -77,14 +84,14 @@ class AudioPreprocessor:
 
     def batch_decode(self, token_ids, skip_special_tokens=True):
         """Decode a batch of token IDs into text with gestion robuste des erreurs et validation.
-        
+
         Args:
             token_ids: Liste, numpy.ndarray ou torch.Tensor contenant les IDs des tokens
             skip_special_tokens: Booléen indiquant si les tokens spéciaux doivent être ignorés
-            
+
         Returns:
             List[str]: Liste des textes décodés
-            
+
         Raises:
             ValueError: Si token_ids est invalide ou vide
             RuntimeError: Si une erreur survient pendant le décodage
@@ -93,7 +100,7 @@ class AudioPreprocessor:
             error_msg = "token_ids ne peut pas être None"
             logging.error(error_msg)
             raise ValueError(error_msg)
-            
+
         logging.debug(f"Début du décodage batch - Type des token_ids: {type(token_ids)}")
         try:
             if token_ids is None:
@@ -111,11 +118,11 @@ class AudioPreprocessor:
                 if token_ids.dim() == 0:
                     logging.warning("Received 0-dim tensor, expanding to 1-dim")
                     token_ids = token_ids.unsqueeze(0)
-                
+
                 token_ids = token_ids.detach().cpu()
                 if token_ids.requires_grad:
                     token_ids = token_ids.detach()
-                
+
                 # Vérification des valeurs non valides dans le tenseur
                 if torch.isnan(token_ids).any() or torch.isinf(token_ids).any():
                     logging.warning("Found invalid values in tensor, replacing with pad token")
@@ -133,14 +140,14 @@ class AudioPreprocessor:
                     token_ids < 0,
                     token_ids >= self.tokenizer.vocab_size
                 ))
-                
+
                 if np.any(invalid_mask):
                     logging.warning(f"Correcting {np.sum(invalid_mask)} invalid token values")
                     # Ensure pad_token_id is a numpy array of the same dtype as token_ids
                     pad_value = np.array(pad_token_id, dtype=token_ids.dtype)
                     token_ids = np.where(invalid_mask, pad_value, token_ids)
                     logging.debug(f"Token IDs after correction: shape={token_ids.shape}, dtype={token_ids.dtype}")
-                
+
                 # Ensure valid range and type
                 token_ids = np.clip(np.round(token_ids), 0, self.tokenizer.vocab_size - 1)
                 token_ids = token_ids.astype(np.int64)
@@ -198,9 +205,9 @@ class AudioPreprocessor:
                 if not all(isinstance(text, str) for text in decoded_texts):
                     logging.error("Tokenizer returned non-string values")
                     return [""] * len(processed_ids)
-                    
+
                 return decoded_texts
-                
+
             except Exception as e:
                 logging.error(f"Tokenizer batch_decode failed: {str(e)}")
                 return [""] * len(processed_ids)
