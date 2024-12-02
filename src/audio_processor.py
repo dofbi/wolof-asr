@@ -49,15 +49,8 @@ class AudioPreprocessor:
             if len(audio_array.shape) > 1:
                 audio_array = torch.mean(audio_array, dim=0)
 
-            # Noise reduction
-            noise_gate = torchaudio.transforms.Vad(sample_rate=self.sampling_rate)
-            audio_array = noise_gate(audio_array)
-
             # Normalize audio
-            if audio_array.numel() == 0 or torch.max(torch.abs(audio_array)) == 0:
-                logging.warning("Audio array is empty or its max value is zero. Skipping normalization.")
-            else:
-                audio_array = audio_array / torch.max(torch.abs(audio_array))
+            audio_array = audio_array / torch.max(torch.abs(audio_array))
 
             # Pad or truncate
             if audio_array.shape[0] < self.max_length:
