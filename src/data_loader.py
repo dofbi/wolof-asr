@@ -1,75 +1,71 @@
 from datasets import load_dataset, Dataset as HFDataset
 import logging
-
-logger = logging.getLogger(__name__)
 import torch
 import torchaudio
 from torch.utils.data import Dataset
-import numpy as np
-from typing import Dict, Any, Union, cast, Optional
+from typing import Dict, Any, Optional, Union
 from torch.utils import data
 
+logger = logging.getLogger(__name__)
+
 class WolofDataset(Dataset):
-    def __init__(self, split: str = "train", max_samples: Optional[int] = None):
-        """Load Wolof TTS dataset from HuggingFace.
-        
+    def __init__(self, base: str, split: str = "train", max_samples: Optional[int] = None):
+        """Dataset loader compatible with both wolof_tts and asr-wolof-dataset.
+
         Args:
-            split (str): Dataset split to load ('train' or 'test')
-            max_samples (int, optional): Maximum number of samples to load. If None, load all samples.
+            base (str): Dataset base to use ('wolof_tts' or 'asr_wolof')
+            split (str): Dataset split to load ('train')
+            max_samples (int, optional): Max samples to load. If None, load all.
         """
+        self.sampling_rate = 16000
+        self.base = base
+
         try:
-            logger.info(f"Downloading and loading {split} dataset...")
-            dataset = load_dataset(
-                "galsenai/wolof_tts",
-                split=split,
-                cache_dir="./cache"
-            )
-            if isinstance(dataset, dict):
-                self.dataset = cast(HFDataset, dataset[split])
+            logger.info(f"Downloading and loading {base} ({split}) dataset...")
+            if base == "wolof_tts":
+                dataset = load_dataset("galsenai/wolof_tts", split="train", cache_dir="./cache")
+            elif base == "asr_wolof":
+                dataset = load_dataset("IndabaxSenegal/asr-wolof-dataset", split="train", cache_dir="./cache")
             else:
-                self.dataset = cast(HFDataset, dataset)
-                
+                raise ValueError(f"Unsupported dataset base: {base}")
+
+            self.dataset = dataset
             total_samples = len(self.dataset)
+
             if max_samples is not None and max_samples > 0:
                 self.dataset = self.dataset.select(range(min(max_samples, total_samples)))
                 logger.info(f"Limited {split} dataset from {total_samples} to {len(self.dataset)} samples (max_samples={max_samples})")
             else:
                 logger.info(f"Successfully loaded all {total_samples} examples from {split} split")
+
         except Exception as e:
             logger.error(f"Error loading dataset: {str(e)}")
             raise
-        self.sampling_rate = 16000
 
     def __len__(self) -> int:
         return len(self.dataset)
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
-        """Get audio and text pair with robust error handling."""
+        """Load an audio and text sample based on the dataset structure."""
         try:
             item = self.dataset[idx]
-            audio_data = item['audio']
-            sampling_rate = int(audio_data['sampling_rate'])
+            if self.base == "wolof_tts":
+                audio_data = item['audio']
+                audio = torch.from_numpy(audio_data['array']).float()
+                sampling_rate = int(audio_data['sampling_rate'])
+            elif self.base == "asr_wolof":
+                audio_path = item['audio']['path']
+                audio, sampling_rate = torchaudio.load(audio_path)
+                audio = audio.squeeze(0).float()
+            else:
+                raise ValueError(f"Unsupported dataset base: {self.base}")
 
-            # Load and resample audio if necessary
-            audio = torch.from_numpy(audio_data['array']).float()
-            
-            # Add validation for audio data
-            if torch.isnan(audio).any() or torch.isinf(audio).any():
-                logger.warning(f"Invalid audio values detected at index {idx}, replacing with zeros")
-                audio = torch.zeros_like(audio)
-            
+            # Resample audio if necessary
             if sampling_rate != self.sampling_rate:
-                try:
-                    resampler = torchaudio.transforms.Resample(
-                        orig_freq=sampling_rate,
-                        new_freq=self.sampling_rate
-                    )
-                    audio = resampler(audio)
-                except Exception as e:
-                    logger.error(f"Resampling failed for index {idx}: {str(e)}")
-                    audio = torch.zeros(self.sampling_rate)  # Return 1 second of silence
+                resampler = torchaudio.transforms.Resample(orig_freq=sampling_rate, new_freq=self.sampling_rate)
+                audio = resampler(audio)
 
-            # Safe normalization
+            # Normalize audio
             max_val = torch.max(torch.abs(audio))
             if max_val > 0:
                 audio = audio / max_val
@@ -77,48 +73,56 @@ class WolofDataset(Dataset):
                 logger.warning(f"Zero or invalid audio at index {idx}")
                 audio = torch.zeros_like(audio)
 
+            # Handle text/transcription differences
+            if self.base == "wolof_tts":
+                text = item['text']
+                duration = len(audio) / self.sampling_rate
+            elif self.base == "asr_wolof":
+                text = item.get('transcription', "")
+                duration = item['duration']
+
             return {
                 'audio': audio,
-                'text': item['text'],
-                'duration': len(audio) / self.sampling_rate
+                'text': text,
+                'duration': duration
             }
         except Exception as e:
             logger.error(f"Error loading item at index {idx}: {str(e)}")
-            # Return a safe fallback value
             return {
                 'audio': torch.zeros(self.sampling_rate),
                 'text': "",
                 'duration': 1.0
             }
 
-def create_data_loader(batch_size: int = 8, max_samples: Optional[int] = None):
-    """Create train and validation data loaders.
-    
+def create_data_loader(base: str, batch_size: int = 8, max_samples: Optional[int] = None):
+    """Create train and validation data loaders for the specified dataset.
+
     Args:
+        base (str): Dataset base to use ('wolof_tts' or 'asr_wolof')
         batch_size (int): Batch size for the data loaders
-        max_samples (int, optional): Maximum number of samples to load. If None, load all samples.
-        
+        max_samples (int, optional): Max samples to load. If None, load all.
+
     Returns:
-        tuple: (train_loader, val_loader) - PyTorch DataLoader objects for training and validation
+        tuple: (train_loader, val_loader) - PyTorch DataLoader objects
     """
-    # Créer le dataset d'entraînement
-    train_dataset = WolofDataset(split="train", max_samples=max_samples)
+    # Only use 'train' split for now as 'test' split doesn't exist for this dataset
+    train_dataset = WolofDataset(base=base, split="train", max_samples=max_samples)
     train_loader = data.DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
         collate_fn=collate_fn
     )
-    
-    # Créer le dataset de validation
-    val_dataset = WolofDataset(split="test", max_samples=max_samples)
+
+    # Optionally create a validation set from a subset of 'train'
+    val_dataset = train_dataset  # If you want a validation set, you can split here
     val_loader = data.DataLoader(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
         collate_fn=collate_fn
     )
-    
+
     return train_loader, val_loader
 
 def collate_fn(batch):
