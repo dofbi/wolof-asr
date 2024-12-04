@@ -38,7 +38,7 @@ def main(args):
     # Charger les données
     logger.info("Chargement des données...")
     train_dataloader, val_dataloader = create_data_loader(
-        base='wolof_tts',
+        base='asr_wolof',
         batch_size=args.batch_size,
         max_samples=args.max_samples
     )
