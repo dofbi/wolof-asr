@@ -30,15 +30,16 @@ class CheckpointManager:
                 logger.info("Aucun point de contrôle trouvé")
                 return None, None
 
-            last_run = max(exp_runs, key=lambda r: r.summary.get("epoch", 0)) - 1
-            checkpoint_path = self.checkpoint_dir / f"checkpoint_epoch_{last_run.summary.get('epoch', 0)}.pt"
+            last_run = max(exp_runs, key=lambda r: r.summary.get("epoch", 0))
+            checkpoint_epoch = last_run.summary.get("epoch", 0) - 1
+            checkpoint_path = self.checkpoint_dir / f"checkpoint_epoch_{checkpoint_epoch}.pt"
 
             if not checkpoint_path.exists():
                 logger.warning(f"Fichier de point de contrôle non trouvé: {checkpoint_path}")
                 return None, None
 
             state = {
-                "epoch": last_run.summary.get("epoch", 0),
+                "epoch": checkpoint_epoch,
                 "global_step": last_run.summary.get("global_step", 0),
                 "best_val_loss": last_run.summary.get("best_val_loss", float("inf"))
             }
